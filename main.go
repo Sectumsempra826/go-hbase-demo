@@ -129,10 +129,10 @@ func (s *server) QueryRange(ctx context.Context, req *pb.RangeReq) (*pb.SeqItems
 
 	// 根据 RangeOption 处理区间
 	if req.Option == pb.RangeOption_WithoutStart || req.Option == pb.RangeOption_WithoutBoth {
-		startRowKey = incrementRowKey(startRowKey)
+		startRowKey = incrementRowKey(startRowKey) // 左开区间，rowkey+1
 	}
 	if req.Option == pb.RangeOption_WithoutEnd || req.Option == pb.RangeOption_WithoutBoth {
-		endRowKey = decrementRowKey(endRowKey) //
+		endRowKey = decrementRowKey(endRowKey) // 右开区间，rowkey-1
 	}
 
 	// 创建扫描请求
@@ -213,11 +213,30 @@ func (s *server) DeleteRange(ctx context.Context, req *pb.RangeReq) (*pb.DelRang
 
 	log.Printf("DeleteRange startRowKey: %s, endRowKey: %s", startRowKey, endRowKey)
 
-	scanRequest, err := hrpc.NewScanRangeStr(ctx, "my_table", startRowKey, endRowKey)
+	// 根据 RangeOption 处理区间
+	if req.Option == pb.RangeOption_WithoutStart || req.Option == pb.RangeOption_WithoutBoth {
+		startRowKey = incrementRowKey(startRowKey)
+	}
+	if req.Option == pb.RangeOption_WithoutEnd || req.Option == pb.RangeOption_WithoutBoth {
+		endRowKey = decrementRowKey(endRowKey)
+	}
+
+	// 创建扫描请求
+	var scanRequest *hrpc.Scan
+	var err error
+
+	if req.Reverse {
+		// For reverse scanning, swap start and end keys and process results in reverse
+		scanRequest, err = hrpc.NewScanRangeStr(ctx, "my_table", endRowKey, startRowKey)
+	} else {
+		scanRequest, err = hrpc.NewScanRangeStr(ctx, "my_table", startRowKey, endRowKey)
+	}
+
 	if err != nil {
 		log.Printf("DeleteRange scan request creation failed: %v", err)
 		return nil, err // 返回错误
 	}
+
 	scanner := s.client.Scan(scanRequest)
 	for {
 		res, err := scanner.Next()
