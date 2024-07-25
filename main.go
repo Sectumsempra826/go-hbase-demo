@@ -127,11 +127,30 @@ func (s *server) QueryRange(ctx context.Context, req *pb.RangeReq) (*pb.SeqItems
 
 	log.Printf("QueryRange startRowKey: %s, endRowKey: %s", startRowKey, endRowKey)
 
-	scanRequest, err := hrpc.NewScanRangeStr(ctx, "my_table", startRowKey, endRowKey)
+	// 根据 RangeOption 处理区间
+	if req.Option == pb.RangeOption_WithoutStart || req.Option == pb.RangeOption_WithoutBoth {
+		startRowKey = incrementRowKey(startRowKey)
+	}
+	if req.Option == pb.RangeOption_WithoutEnd || req.Option == pb.RangeOption_WithoutBoth {
+		endRowKey = decrementRowKey(endRowKey) //
+	}
+
+	// 创建扫描请求
+	var scanRequest *hrpc.Scan
+	var err error
+
+	if req.Reverse {
+		// For reverse scanning, swap start and end keys and process results in reverse
+		scanRequest, err = hrpc.NewScanRangeStr(ctx, "my_table", endRowKey, startRowKey)
+	} else {
+		scanRequest, err = hrpc.NewScanRangeStr(ctx, "my_table", startRowKey, endRowKey)
+	}
+
 	if err != nil {
 		log.Printf("QueryRange scan request creation failed: %v", err)
 		return nil, err // 返回错误
 	}
+
 	scanner := s.client.Scan(scanRequest)
 	items := []*pb.SeqItem{}
 	for {
@@ -155,8 +174,35 @@ func (s *server) QueryRange(ctx context.Context, req *pb.RangeReq) (*pb.SeqItems
 			})
 		}
 	}
+
+	// If reverse flag is true, reverse the order of items
+	if req.Reverse {
+		reverseItems(items)
+	}
+
 	log.Println("QueryRange request successful")
 	return &pb.SeqItems{Items: items}, nil // 返回 SeqItems
+}
+
+// 辅助函数 incrementRowKey 和 decrementRowKey，用于调整 RowKey
+func incrementRowKey(rowKey string) string {
+	// 实现 RowKey 增加逻辑，假设为字符串拼接
+	return rowKey + "\x00"
+}
+
+func decrementRowKey(rowKey string) string {
+	// 实现 RowKey 减少逻辑，假设为字符串截断
+	if len(rowKey) > 0 {
+		return rowKey[:len(rowKey)-1]
+	}
+	return rowKey
+}
+
+// reverseItems reverses the order of SeqItems
+func reverseItems(items []*pb.SeqItem) {
+	for i, j := 0, len(items)-1; i < j; i, j = i+1, j-1 {
+		items[i], items[j] = items[j], items[i]
+	}
 }
 
 // 实现 gRPC 服务的 DeleteRange 方法

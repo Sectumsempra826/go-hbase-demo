@@ -86,6 +86,8 @@ func main() {
 			BizId: []byte("biz1"),
 			Seq:   2,
 		},
+		Reverse: true,
+		Option:  pb.RangeOption_WithoutBoth,
 	}
 
 	queryRangeResp, err := client.QueryRange(context.Background(), queryRangeReq)
