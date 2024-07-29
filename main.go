@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net"
 
@@ -11,13 +12,11 @@ import (
 	"github.com/tsuna/gohbase"
 	"github.com/tsuna/gohbase/hrpc"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
 )
 
 // 计算 file_id 的哈希值:取fileID最后一位
 func hash(fileID string) string {
-	// h := sha256.New()                     // 创建新的 SHA-256 哈希对象
-	// h.Write([]byte(fileID))               // 将 fileID 转换为字节数组并写入哈希对象
-	// return hex.EncodeToString(h.Sum(nil)) // 将哈希结果转换为十六进制字符串
 	if len(fileID) == 0 {
 		return ""
 	}
@@ -45,16 +44,22 @@ func NewServer() *server {
 }
 
 // 实现 gRPC 服务的 Put 方法
-// TODO 批量插入
 // 将接收到的 SeqItems 存储到 HBase 中
 func (s *server) Put(ctx context.Context, seqItems *pb.SeqItems) (*pb.PutItemResp, error) {
+	// 批量插入seqItem
 	for _, item := range seqItems.Items {
 		rowKey := generateRowKey(string(item.Key.BizId), item.Key.Seq) // 生成 RowKey
+		// 序列化 SeqItem
+		data, err := proto.Marshal(item)
+		if err != nil {
+			log.Printf("Failed to marshal SeqItem: %v", err)
+		}
+
 		// 创建 HBase Put 请求
 		// HBase Shell中建表：create 'my_table','cf'
 		putRequest, err := hrpc.NewPutStr(ctx, "my_table", rowKey, map[string]map[string][]byte{
 			"cf": { // 列族
-				"value": item.Value, // 列名和值
+				"value": data, // 列名和值
 			},
 		})
 		if err != nil {
@@ -75,7 +80,7 @@ func (s *server) Put(ctx context.Context, seqItems *pb.SeqItems) (*pb.PutItemRes
 // 根据 SeqKey 从 HBase 中检索数据
 func (s *server) Get(ctx context.Context, seqKey *pb.SeqKey) (*pb.SeqItem, error) {
 	rowKey := generateRowKey(string(seqKey.BizId), seqKey.Seq) // 生成 RowKey
-	// 创建 HBase Get 请求
+	// 创建 HBase Get 请求,根据rowkey查找seqitem
 	getRequest, err := hrpc.NewGetStr(ctx, "my_table", rowKey)
 	if err != nil {
 		log.Printf("Get request creation failed: %v", err)
@@ -87,36 +92,74 @@ func (s *server) Get(ctx context.Context, seqKey *pb.SeqKey) (*pb.SeqItem, error
 		return nil, err // 返回错误
 	}
 	value := getRsp.Cells[0].Value // 获取返回值
-	log.Println("Get request successful")
-	return &pb.SeqItem{Key: seqKey, Value: value}, nil // 返回 SeqItem
+
+	seqItem := &pb.SeqItem{}
+	// 反序列化为seqitem
+	err = proto.Unmarshal(value, seqItem)
+	if err != nil {
+		log.Printf("Failed to unmarshal SeqItem: %v", err)
+		return nil, err // 返回错误
+	}
+	log.Println("Get request successful： " + seqItem.String())
+	return seqItem, nil // 返回 SeqItem
 }
 
 // 实现 gRPC 服务的 GetMaxKey 方法
 // 获取最大 SeqKey
 func (s *server) GetMaxKey(ctx context.Context, seqKey *pb.SeqKey) (*pb.SeqKey, error) {
-	// 这里的实现仅作为示例，实际应用中需要根据具体业务逻辑进行调整
-	rowKey := generateRowKey(string(seqKey.BizId), seqKey.Seq) // 生成 RowKey
-	getRequest, err := hrpc.NewGetStr(ctx, "my_table", rowKey)
+	// 构造范围扫描的开始和结束前缀
+	startPrefix := generateRowKey(string(seqKey.BizId), ^int32(0))
+	endPrefix := generateRowKey(string(seqKey.BizId), int32(0))
+
+	// 执行范围扫描查询
+	scanRequest, err := hrpc.NewScanRange(ctx, []byte("my_table"), []byte(startPrefix), []byte(endPrefix))
 	if err != nil {
 		log.Printf("GetMaxKey request creation failed: %v", err)
-		return nil, err // 返回错误
+		return nil, err
 	}
-	getRsp, err := s.client.Get(getRequest)
-	if err != nil {
-		log.Printf("GetMaxKey request execution failed: %v", err)
-		return nil, err // 返回错误
+	scanner := s.client.Scan(scanRequest)
+
+	var maxSeqKey *pb.SeqKey
+	// 迭代扫描结果
+	for {
+		res, err := scanner.Next()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			log.Printf("GetMaxKey scan result error: %v", err)
+			return nil, err
+		}
+		for _, cell := range res.Cells {
+			// 反序列化 cell.Value 成 SeqItem
+			seqItem := &pb.SeqItem{}
+			err = proto.Unmarshal(cell.Value, seqItem)
+			if err != nil {
+				log.Printf("Failed to unmarshal SeqItem: %v", err)
+				continue
+			}
+
+			// 从 SeqItem 中获取 SeqKey
+			seqKey := seqItem.GetKey()
+			if seqKey == nil {
+				log.Printf("SeqItem does not contain SeqKey")
+				continue
+			}
+
+			// 比较 SeqKey 的 seq 值
+			if maxSeqKey == nil || seqKey.GetSeq() > maxSeqKey.GetSeq() {
+				maxSeqKey = seqKey
+			}
+		}
 	}
-	if len(getRsp.Cells) == 0 {
-		log.Println("GetMaxKey request found no cells")
-		return nil, fmt.Errorf("no cells found")
+
+	if maxSeqKey == nil {
+		log.Println("GetMaxKey request found no matching cells")
+		return nil, fmt.Errorf("no matching cells found")
 	}
-	// 假设返回的第一条记录中的行键就是最大键
-	maxSeqKey := &pb.SeqKey{
-		BizId: []byte(getRsp.Cells[0].Row),
-		Seq:   seqKey.Seq, // 这里假设 Seq 一致，需要根据实际业务逻辑进行调整
-	}
-	log.Println("GetMaxKey request successful")
-	return maxSeqKey, nil // 返回最大 SeqKey
+
+	log.Println("GetMaxKey request successful: " + maxSeqKey.String())
+	return maxSeqKey, nil
 }
 
 // 实现 gRPC 服务的 QueryRange 方法

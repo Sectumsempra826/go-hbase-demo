@@ -67,7 +67,7 @@ func main() {
 	// 测试 GetMaxKey 方法
 	getMaxKeyReq := &pb.SeqKey{
 		BizId: []byte("biz1"),
-		Seq:   2,
+		Seq:   1,
 	}
 
 	getMaxKeyResp, err := client.GetMaxKey(context.Background(), getMaxKeyReq)

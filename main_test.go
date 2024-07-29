@@ -129,42 +129,6 @@ func Test_server_Get(t *testing.T) {
 	}
 }
 
-func Test_server_GetMaxKey(t *testing.T) {
-	type fields struct {
-		UnimplementedSeqDbServer pb.UnimplementedSeqDbServer
-		client                   gohbase.Client
-	}
-	type args struct {
-		ctx    context.Context
-		seqKey *pb.SeqKey
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		want    *pb.SeqKey
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			s := &server{
-				UnimplementedSeqDbServer: tt.fields.UnimplementedSeqDbServer,
-				client:                   tt.fields.client,
-			}
-			got, err := s.GetMaxKey(tt.args.ctx, tt.args.seqKey)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("server.GetMaxKey() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("server.GetMaxKey() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func Test_server_QueryRange(t *testing.T) {
 	type fields struct {
 		UnimplementedSeqDbServer pb.UnimplementedSeqDbServer
@@ -232,6 +196,42 @@ func Test_server_DeleteRange(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("server.DeleteRange() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_server_GetMaxKey(t *testing.T) {
+	type fields struct {
+		UnimplementedSeqDbServer pb.UnimplementedSeqDbServer
+		client                   gohbase.Client
+	}
+	type args struct {
+		ctx    context.Context
+		seqKey *pb.SeqKey
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		want    *pb.SeqKey
+		wantErr bool
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &server{
+				UnimplementedSeqDbServer: tt.fields.UnimplementedSeqDbServer,
+				client:                   tt.fields.client,
+			}
+			got, err := s.GetMaxKey(tt.args.ctx, tt.args.seqKey)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("server.GetMaxKey() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("server.GetMaxKey() = %v, want %v", got, tt.want)
 			}
 		})
 	}
