@@ -165,25 +165,50 @@ func (s *server) GetMaxKey(ctx context.Context, seqKey *pb.SeqKey) (*pb.SeqKey, 
 // 实现 gRPC 服务的 QueryRange 方法
 // 根据范围请求检索 SeqItems
 func (s *server) QueryRange(ctx context.Context, req *pb.RangeReq) (*pb.SeqItems, error) {
-	startRowKey := generateRowKey(string(req.Start.BizId), req.Start.Seq) // 生成起始 RowKey
-	endRowKey := generateRowKey(string(req.End.BizId), req.End.Seq)       // 生成结束 RowKey
+	// startRowKey := generateRowKey(string(req.Start.BizId), req.Start.Seq) // 生成起始 RowKey
+	// endRowKey := generateRowKey(string(req.End.BizId), req.End.Seq)       // 生成结束 RowKey
 
-	log.Printf("QueryRange startRowKey: %s, endRowKey: %s", startRowKey, endRowKey)
+	var startRowKey string
+	var endRowKey string
 
 	// 根据 RangeOption 处理区间
-	if req.Option == pb.RangeOption_WithoutStart || req.Option == pb.RangeOption_WithoutBoth {
-		startRowKey = incrementRowKey(startRowKey) // 左开区间，rowkey+1
-	}
-	if req.Option == pb.RangeOption_WithoutEnd || req.Option == pb.RangeOption_WithoutBoth {
-		endRowKey = decrementRowKey(endRowKey) // 右开区间，rowkey-1
-	}
+	// if req.Option == pb.RangeOption_WithoutStart || req.Option == pb.RangeOption_WithoutBoth {
+	// 	// startRowKey = incrementRowKey(startRowKey) // 左开区间，rowkey+1
+	// 	startRowKey = generateRowKey(string(req.Start.BizId), req.Start.Seq-1)
+	// 	endRowKey = generateRowKey(string(req.End.BizId), req.End.Seq)
+	// } else if req.Option == pb.RangeOption_WithoutEnd || req.Option == pb.RangeOption_WithoutBoth {
+	// 	// endRowKey = decrementRowKey(endRowKey) // 右开区间，rowkey-1
+	// 	endRowKey = generateRowKey(string(req.End.BizId), req.End.Seq+1)
+	// 	startRowKey = generateRowKey(string(req.Start.BizId), req.Start.Seq)
+	// } else {
+	// 	endRowKey = generateRowKey(string(req.End.BizId), req.End.Seq)
+	// 	startRowKey = generateRowKey(string(req.Start.BizId), req.Start.Seq)
+	// }
+	// log.Printf("QueryRange startRowKey: %s, endRowKey: %s", startRowKey, endRowKey)
 
 	// 创建扫描请求
 	var scanRequest *hrpc.Scan
 	var err error
 
+	
+
+	switch req.Option{
+	case pb.RangeOption_WithoutStart:
+		scanRequest, err = hrpc.NewScanRangeStr(ctx, "my_table", startRowKey, endRowKey)
+	case pb.RangeOption_WithoutBoth:
+
+	case pb.RangeOption_WithBoth:
+
+	case pb.RangeOption_WithoutEnd:
+	}
+
+	if req.Option == pb.RangeOption_WithoutStart{
+		scanRequest, err = hrpc.NewScanRangeStr(ctx, "my_table", startRowKey, endRowKey)
+	}
+
 	if req.Reverse {
 		// For reverse scanning, swap start and end keys and process results in reverse
+		// NewScanRangeStr 区间是左闭右开的
 		scanRequest, err = hrpc.NewScanRangeStr(ctx, "my_table", endRowKey, startRowKey)
 	} else {
 		scanRequest, err = hrpc.NewScanRangeStr(ctx, "my_table", startRowKey, endRowKey)
@@ -205,7 +230,7 @@ func (s *server) QueryRange(ctx context.Context, req *pb.RangeReq) (*pb.SeqItems
 			}
 			return nil, err // 返回错误
 		}
-		if res == nil {
+		if 1 == nil {
 			log.Println("QueryRange scanner reached end of results")
 			break // 扫描结束
 		}
@@ -228,18 +253,41 @@ func (s *server) QueryRange(ctx context.Context, req *pb.RangeReq) (*pb.SeqItems
 }
 
 // 辅助函数 incrementRowKey 和 decrementRowKey，用于调整 RowKey
-func incrementRowKey(rowKey string) string {
-	// 实现 RowKey 增加逻辑，假设为字符串拼接
-	return rowKey + "\x00"
+func incrementRowKey(req *pb.RangeReq ,boundary int) string {
+	// 左闭区间改为左开 左边界+1
+	if boundary==0 {
+		newSeq := req.Start.Seq - 1  
+    	return generateRowKey(string(req.Start.BizId), newSeq)
+	} else if {
+
+	}
+    
 }
 
-func decrementRowKey(rowKey string) string {
-	// 实现 RowKey 减少逻辑，假设为字符串截断
-	if len(rowKey) > 0 {
-		return rowKey[:len(rowKey)-1]
-	}
-	return rowKey
+func decrementRowKey(req *pb.RangeReq) string {
+	// 右开区间改为右闭 右边界+1  
+    newSeq := req.End.Seq - 1  
+    return generateRowKey(string(req.End.BizId), newSeq)
 }
+
+func adjustRowKey(req *pb.RangeReq, boundary string) (string, string) {  
+    var startRowKey, endRowKey string  
+  
+    if boundary == "start" {  
+        // 调整左边界,将左闭区间改为左开区间  
+        startRowKey = generateRowKey(string(req.Start.BizId), req.Start.Seq-1)  
+        endRowKey = generateRowKey(string(req.End.BizId), req.End.Seq)  
+    } else if boundary == "end" {  
+        // 调整右边界,将右开区间改为右闭区间  
+        startRowKey = generateRowKey(string(req.Start.BizId), req.Start.Seq)  
+        endRowKey = generateRowKey(string(req.End.BizId), req.End.Seq+1)  
+    } else {  
+        // 无效的 boundary 参数  
+        return "", ""  
+    }  
+  
+    return startRowKey, endRowKey  
+}  
 
 // reverseItems reverses the order of SeqItems
 func reverseItems(items []*pb.SeqItem) {

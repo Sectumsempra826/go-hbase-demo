@@ -40,6 +40,20 @@ func main() {
 				},
 				Value: []byte("value2"),
 			},
+			{
+				Key: &pb.SeqKey{
+					BizId: []byte("biz1"),
+					Seq:   3,
+				},
+				Value: []byte("value3"),
+			},
+			{
+				Key: &pb.SeqKey{
+					BizId: []byte("biz1"),
+					Seq:   4,
+				},
+				Value: []byte("value4"),
+			},
 		},
 	}
 
@@ -78,16 +92,15 @@ func main() {
 
 	// 测试 QueryRange 方法
 	queryRangeReq := &pb.RangeReq{
-		Start: &pb.SeqKey{
-			BizId: []byte("biz1"),
-			Seq:   1,
-		},
 		End: &pb.SeqKey{
 			BizId: []byte("biz1"),
 			Seq:   2,
 		},
-		Reverse: true,
-		Option:  pb.RangeOption_WithoutBoth,
+		Start: &pb.SeqKey{
+			BizId: []byte("biz1"),
+			Seq:   4,
+		},
+		Option: pb.RangeOption_WithoutEnd,
 	}
 
 	queryRangeResp, err := client.QueryRange(context.Background(), queryRangeReq)
