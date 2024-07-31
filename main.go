@@ -252,25 +252,12 @@ func (s *server) QueryRange(ctx context.Context, req *pb.RangeReq) (*pb.SeqItems
 		}
 	}
 
-	// If reverse flag is true, reverse the order of items
-	// if req.Reverse {
-	// 	reverseItems(items)
-	// }
-
 	log.Println("QueryRange request successful")
 	// 打印每个 SeqItem
 	for _, item := range items {
 		log.Printf("SeqItem: Key=%s, Value=%s", item.Key.BizId, string(item.Value))
 	}
 	return &pb.SeqItems{Items: items}, nil // 返回 SeqItems
-}
-
-// reverseItems reverses the order of SeqItems
-// TODO
-func reverseItems(items []*pb.SeqItem) {
-	for i, j := 0, len(items)-1; i < j; i, j = i+1, j-1 {
-		items[i], items[j] = items[j], items[i]
-	}
 }
 
 // 实现 gRPC 服务的 DeleteRange 方法
@@ -286,7 +273,7 @@ func (s *server) DeleteRange(ctx context.Context, req *pb.RangeReq) (*pb.DelRang
 
 	if req.Reverse {
 		// For reverse scanning, swap start and end keys and process results in reverse
-		scanRequest, err = hrpc.NewScanRangeStr(ctx, "my_table", endRowKey, startRowKey)
+		scanRequest, err = hrpc.NewScanRangeStr(ctx, "my_table", startRowKey, endRowKey, hrpc.Reversed())
 	} else {
 		scanRequest, err = hrpc.NewScanRangeStr(ctx, "my_table", startRowKey, endRowKey)
 	}

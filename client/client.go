@@ -114,12 +114,14 @@ func main() {
 	deleteRangeReq := &pb.RangeReq{
 		End: &pb.SeqKey{
 			BizId: []byte("biz1"),
-			Seq:   1,
+			Seq:   2,
 		},
 		Start: &pb.SeqKey{
 			BizId: []byte("biz1"),
-			Seq:   2,
+			Seq:   4,
 		},
+		Reverse: true,
+		Option:  pb.RangeOption_WithoutEnd,
 	}
 
 	_, err = client.DeleteRange(context.Background(), deleteRangeReq)
