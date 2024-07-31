@@ -76,6 +76,8 @@ func (s *server) Put(ctx context.Context, seqItems *pb.SeqItems) (*pb.PutItemRes
 	return &pb.PutItemResp{}, nil // 返回空的响应
 }
 
+// TODO：批量存储
+
 // 实现 gRPC 服务的 Get 方法
 // 根据 SeqKey 从 HBase 中检索数据
 func (s *server) Get(ctx context.Context, seqKey *pb.SeqKey) (*pb.SeqItem, error) {
@@ -162,24 +164,43 @@ func (s *server) GetMaxKey(ctx context.Context, seqKey *pb.SeqKey) (*pb.SeqKey, 
 	return maxSeqKey, nil
 }
 
-// 辅助方法：根据RangeOption处理区间，生成rowkey
+// 辅助方法：根据RangeOption处理区间，生成边界rowkey
 func generateQueryRangeKeys(req *pb.RangeReq) (startRowKey string, endRowKey string) {
 	// 由于NewScanRangeStr方法默认为左闭右开，左开和右闭的时候需要处理
 	// 左开：withoutboth withoustart 右闭：withoutstart withboth
-	if req.Option == pb.RangeOption_WithoutStart || req.Option == pb.RangeOption_WithoutBoth {
-		// 左开区间，startRowkey+1
-		startRowKey = generateRowKey(string(req.Start.BizId), req.Start.Seq-1)
-		endRowKey = generateRowKey(string(req.End.BizId), req.End.Seq)
-	}
-	if req.Option == pb.RangeOption_WithoutStart || req.Option == pb.RangeOption_WithBoth {
-		// 右闭区间，endRowkey+1
-		startRowKey = generateRowKey(string(req.Start.BizId), req.Start.Seq)
-		endRowKey = generateRowKey(string(req.End.BizId), req.End.Seq-1)
-	}
-	if req.Option == pb.RangeOption_WithoutEnd {
-		// 左闭右开，无需处理
-		startRowKey = generateRowKey(string(req.Start.BizId), req.Start.Seq)
-		endRowKey = generateRowKey(string(req.End.BizId), req.End.Seq)
+	// 顺序
+	if req.Reverse == false {
+		if req.Option == pb.RangeOption_WithoutStart || req.Option == pb.RangeOption_WithoutBoth {
+			// 左开区间，startRowkey+1
+			startRowKey = generateRowKey(string(req.Start.BizId), req.Start.Seq-1)
+			endRowKey = generateRowKey(string(req.End.BizId), req.End.Seq)
+		}
+		if req.Option == pb.RangeOption_WithoutStart || req.Option == pb.RangeOption_WithBoth {
+			// 右闭区间，endRowkey+1
+			startRowKey = generateRowKey(string(req.Start.BizId), req.Start.Seq)
+			endRowKey = generateRowKey(string(req.End.BizId), req.End.Seq-1)
+		}
+		if req.Option == pb.RangeOption_WithoutEnd {
+			// 左闭右开，无需处理
+			startRowKey = generateRowKey(string(req.Start.BizId), req.Start.Seq)
+			endRowKey = generateRowKey(string(req.End.BizId), req.End.Seq)
+		}
+	} else if req.Reverse == true { // 倒序
+		if req.Option == pb.RangeOption_WithoutStart || req.Option == pb.RangeOption_WithoutBoth {
+			// 左开，startRowkey-1
+			endRowKey = generateRowKey(string(req.Start.BizId), req.Start.Seq)
+			startRowKey = generateRowKey(string(req.End.BizId), req.End.Seq+1)
+		}
+		if req.Option == pb.RangeOption_WithoutStart || req.Option == pb.RangeOption_WithBoth {
+			// 右闭，endRowkey-1
+			endRowKey = generateRowKey(string(req.Start.BizId), req.Start.Seq+1)
+			startRowKey = generateRowKey(string(req.End.BizId), req.End.Seq)
+		}
+		if req.Option == pb.RangeOption_WithoutEnd {
+			// 左闭右开，无需处理
+			endRowKey = generateRowKey(string(req.Start.BizId), req.Start.Seq)
+			startRowKey = generateRowKey(string(req.End.BizId), req.End.Seq)
+		}
 	}
 
 	return startRowKey, endRowKey
@@ -197,8 +218,7 @@ func (s *server) QueryRange(ctx context.Context, req *pb.RangeReq) (*pb.SeqItems
 	var err error
 
 	if req.Reverse {
-		// For reverse scanning, swap start and end keys and process results in reverse
-		scanRequest, err = hrpc.NewScanRangeStr(ctx, "my_table", endRowKey, startRowKey)
+		scanRequest, err = hrpc.NewScanRangeStr(ctx, "my_table", startRowKey, endRowKey, hrpc.Reversed())
 	} else {
 		scanRequest, err = hrpc.NewScanRangeStr(ctx, "my_table", startRowKey, endRowKey)
 	}
@@ -233,11 +253,15 @@ func (s *server) QueryRange(ctx context.Context, req *pb.RangeReq) (*pb.SeqItems
 	}
 
 	// If reverse flag is true, reverse the order of items
-	if req.Reverse {
-		reverseItems(items)
-	}
+	// if req.Reverse {
+	// 	reverseItems(items)
+	// }
 
 	log.Println("QueryRange request successful")
+	// 打印每个 SeqItem
+	for _, item := range items {
+		log.Printf("SeqItem: Key=%s, Value=%s", item.Key.BizId, string(item.Value))
+	}
 	return &pb.SeqItems{Items: items}, nil // 返回 SeqItems
 }
 
