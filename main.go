@@ -162,53 +162,42 @@ func (s *server) GetMaxKey(ctx context.Context, seqKey *pb.SeqKey) (*pb.SeqKey, 
 	return maxSeqKey, nil
 }
 
+// 辅助方法：根据RangeOption处理区间，生成rowkey
+func generateQueryRangeKeys(req *pb.RangeReq) (startRowKey string, endRowKey string) {
+	// 由于NewScanRangeStr方法默认为左闭右开，左开和右闭的时候需要处理
+	// 左开：withoutboth withoustart 右闭：withoutstart withboth
+	if req.Option == pb.RangeOption_WithoutStart || req.Option == pb.RangeOption_WithoutBoth {
+		// 左开区间，startRowkey+1
+		startRowKey = generateRowKey(string(req.Start.BizId), req.Start.Seq-1)
+		endRowKey = generateRowKey(string(req.End.BizId), req.End.Seq)
+	}
+	if req.Option == pb.RangeOption_WithoutStart || req.Option == pb.RangeOption_WithBoth {
+		// 右闭区间，endRowkey+1
+		startRowKey = generateRowKey(string(req.Start.BizId), req.Start.Seq)
+		endRowKey = generateRowKey(string(req.End.BizId), req.End.Seq-1)
+	}
+	if req.Option == pb.RangeOption_WithoutEnd {
+		// 左闭右开，无需处理
+		startRowKey = generateRowKey(string(req.Start.BizId), req.Start.Seq)
+		endRowKey = generateRowKey(string(req.End.BizId), req.End.Seq)
+	}
+
+	return startRowKey, endRowKey
+}
+
 // 实现 gRPC 服务的 QueryRange 方法
 // 根据范围请求检索 SeqItems
 func (s *server) QueryRange(ctx context.Context, req *pb.RangeReq) (*pb.SeqItems, error) {
-	// startRowKey := generateRowKey(string(req.Start.BizId), req.Start.Seq) // 生成起始 RowKey
-	// endRowKey := generateRowKey(string(req.End.BizId), req.End.Seq)       // 生成结束 RowKey
-
-	var startRowKey string
-	var endRowKey string
-
-	// 根据 RangeOption 处理区间
-	// if req.Option == pb.RangeOption_WithoutStart || req.Option == pb.RangeOption_WithoutBoth {
-	// 	// startRowKey = incrementRowKey(startRowKey) // 左开区间，rowkey+1
-	// 	startRowKey = generateRowKey(string(req.Start.BizId), req.Start.Seq-1)
-	// 	endRowKey = generateRowKey(string(req.End.BizId), req.End.Seq)
-	// } else if req.Option == pb.RangeOption_WithoutEnd || req.Option == pb.RangeOption_WithoutBoth {
-	// 	// endRowKey = decrementRowKey(endRowKey) // 右开区间，rowkey-1
-	// 	endRowKey = generateRowKey(string(req.End.BizId), req.End.Seq+1)
-	// 	startRowKey = generateRowKey(string(req.Start.BizId), req.Start.Seq)
-	// } else {
-	// 	endRowKey = generateRowKey(string(req.End.BizId), req.End.Seq)
-	// 	startRowKey = generateRowKey(string(req.Start.BizId), req.Start.Seq)
-	// }
-	// log.Printf("QueryRange startRowKey: %s, endRowKey: %s", startRowKey, endRowKey)
+	// 根据RangeOption生成边界rowkey
+	startRowKey, endRowKey := generateQueryRangeKeys(req)
+	log.Printf("QueryRange startRowKey: %s, endRowKey: %s", startRowKey, endRowKey)
 
 	// 创建扫描请求
 	var scanRequest *hrpc.Scan
 	var err error
 
-	
-
-	switch req.Option{
-	case pb.RangeOption_WithoutStart:
-		scanRequest, err = hrpc.NewScanRangeStr(ctx, "my_table", startRowKey, endRowKey)
-	case pb.RangeOption_WithoutBoth:
-
-	case pb.RangeOption_WithBoth:
-
-	case pb.RangeOption_WithoutEnd:
-	}
-
-	if req.Option == pb.RangeOption_WithoutStart{
-		scanRequest, err = hrpc.NewScanRangeStr(ctx, "my_table", startRowKey, endRowKey)
-	}
-
 	if req.Reverse {
 		// For reverse scanning, swap start and end keys and process results in reverse
-		// NewScanRangeStr 区间是左闭右开的
 		scanRequest, err = hrpc.NewScanRangeStr(ctx, "my_table", endRowKey, startRowKey)
 	} else {
 		scanRequest, err = hrpc.NewScanRangeStr(ctx, "my_table", startRowKey, endRowKey)
@@ -230,7 +219,7 @@ func (s *server) QueryRange(ctx context.Context, req *pb.RangeReq) (*pb.SeqItems
 			}
 			return nil, err // 返回错误
 		}
-		if 1 == nil {
+		if res == nil {
 			log.Println("QueryRange scanner reached end of results")
 			break // 扫描结束
 		}
@@ -252,44 +241,8 @@ func (s *server) QueryRange(ctx context.Context, req *pb.RangeReq) (*pb.SeqItems
 	return &pb.SeqItems{Items: items}, nil // 返回 SeqItems
 }
 
-// 辅助函数 incrementRowKey 和 decrementRowKey，用于调整 RowKey
-func incrementRowKey(req *pb.RangeReq ,boundary int) string {
-	// 左闭区间改为左开 左边界+1
-	if boundary==0 {
-		newSeq := req.Start.Seq - 1  
-    	return generateRowKey(string(req.Start.BizId), newSeq)
-	} else if {
-
-	}
-    
-}
-
-func decrementRowKey(req *pb.RangeReq) string {
-	// 右开区间改为右闭 右边界+1  
-    newSeq := req.End.Seq - 1  
-    return generateRowKey(string(req.End.BizId), newSeq)
-}
-
-func adjustRowKey(req *pb.RangeReq, boundary string) (string, string) {  
-    var startRowKey, endRowKey string  
-  
-    if boundary == "start" {  
-        // 调整左边界,将左闭区间改为左开区间  
-        startRowKey = generateRowKey(string(req.Start.BizId), req.Start.Seq-1)  
-        endRowKey = generateRowKey(string(req.End.BizId), req.End.Seq)  
-    } else if boundary == "end" {  
-        // 调整右边界,将右开区间改为右闭区间  
-        startRowKey = generateRowKey(string(req.Start.BizId), req.Start.Seq)  
-        endRowKey = generateRowKey(string(req.End.BizId), req.End.Seq+1)  
-    } else {  
-        // 无效的 boundary 参数  
-        return "", ""  
-    }  
-  
-    return startRowKey, endRowKey  
-}  
-
 // reverseItems reverses the order of SeqItems
+// TODO
 func reverseItems(items []*pb.SeqItem) {
 	for i, j := 0, len(items)-1; i < j; i, j = i+1, j-1 {
 		items[i], items[j] = items[j], items[i]
@@ -299,18 +252,9 @@ func reverseItems(items []*pb.SeqItem) {
 // 实现 gRPC 服务的 DeleteRange 方法
 // 删除指定范围的 SeqItems
 func (s *server) DeleteRange(ctx context.Context, req *pb.RangeReq) (*pb.DelRangeResp, error) {
-	startRowKey := generateRowKey(string(req.Start.BizId), req.Start.Seq) // 生成起始 RowKey
-	endRowKey := generateRowKey(string(req.End.BizId), req.End.Seq)       // 生成结束 RowKey
-
-	log.Printf("DeleteRange startRowKey: %s, endRowKey: %s", startRowKey, endRowKey)
-
 	// 根据 RangeOption 处理区间
-	if req.Option == pb.RangeOption_WithoutStart || req.Option == pb.RangeOption_WithoutBoth {
-		startRowKey = incrementRowKey(startRowKey)
-	}
-	if req.Option == pb.RangeOption_WithoutEnd || req.Option == pb.RangeOption_WithoutBoth {
-		endRowKey = decrementRowKey(endRowKey)
-	}
+	startRowKey, endRowKey := generateQueryRangeKeys(req)
+	log.Printf("DeleteRange startRowKey: %s, endRowKey: %s", startRowKey, endRowKey)
 
 	// 创建扫描请求
 	var scanRequest *hrpc.Scan
