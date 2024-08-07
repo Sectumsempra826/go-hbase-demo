@@ -39,14 +39,14 @@ type server struct {
 
 // 创建新的 gRPC 服务器实例，并连接到 HBase
 func NewServer() *server {
-	client := gohbase.NewClient("localhost")
+	client := gohbase.NewClient("ld-7xv325q01b2720rk9-proxy-lindorm-pub.lindorm.rds.aliyuncs.com:30020")
 	return &server{client: client}
 }
 
 // 实现 gRPC 服务的 Put 方法
 // 将接收到的 SeqItems 存储到 HBase 中
 func (s *server) Put(ctx context.Context, seqItems *pb.SeqItems) (*pb.PutItemResp, error) {
-	// 批量插入seqItem
+	// 插入seqItem
 	for _, item := range seqItems.Items {
 		rowKey := generateRowKey(string(item.Key.BizId), item.Key.Seq) // 生成 RowKey
 		// 序列化 SeqItem
@@ -77,6 +77,52 @@ func (s *server) Put(ctx context.Context, seqItems *pb.SeqItems) (*pb.PutItemRes
 }
 
 // TODO：批量存储
+func (s *server) BatchPut(ctx context.Context, seqItemsList []pb.SeqItems) (*pb.PutItemResp, error) {
+	//  // 创建一个批次操作的列表
+	//  var batch []*hrpc.Mutate
+
+	//  // 遍历每个 SeqItems
+	//  for i := range seqItemsList {
+	// 	 seqItems := &seqItemsList[i]
+	// 	 // 遍历每个 SeqItem
+	// 	 for j := range seqItems.Items {
+	// 		 item := &seqItems.Items[j]
+	// 		 rowKey := generateRowKey(string(item.Key.BizId), item.Key.Seq) // 生成 RowKey
+	// 		 // 序列化 SeqItem
+	// 		 data, err := proto.Marshal(item)
+	// 		 if err != nil {
+	// 			 log.Printf("Failed to marshal SeqItem: %v", err)
+	// 			 return nil, err // 返回错误
+	// 		 }
+
+	// 		 // 创建 HBase Put 请求
+	// 		 putRequest, err := hrpc.NewPutStr(ctx, "my_table", rowKey, map[string]map[string][]byte{
+	// 			 "cf": { // 列族
+	// 				 "value": data, // 列名和值
+	// 			 },
+	// 		 })
+	// 		 if err != nil {
+	// 			 log.Printf("Put request creation failed: %v", err)
+	// 			 return nil, err // 返回错误
+	// 		 }
+
+	// 		 // 将每个 putRequest 加入到批次列表中
+	// 		 batch = append(batch, putRequest)
+	// 	 }
+	//  }
+
+	// // 执行批次操作
+	// for _, put := range batch {
+	//     _, err := s.client.Put(put)
+	//     if err != nil {
+	//         log.Printf("Batch put request execution failed: %v", err)
+	//         return nil, err // 返回错误
+	//     }
+	// }
+
+	// log.Println("BatchPut request successful")
+	return &pb.PutItemResp{}, nil // 返回空的响应
+}
 
 // 实现 gRPC 服务的 Get 方法
 // 根据 SeqKey 从 HBase 中检索数据
@@ -104,6 +150,57 @@ func (s *server) Get(ctx context.Context, seqKey *pb.SeqKey) (*pb.SeqItem, error
 	}
 	log.Println("Get request successful： " + seqItem.String())
 	return seqItem, nil // 返回 SeqItem
+}
+
+// TODO 测试
+// 批量获取
+// 实现 gRPC 服务的 BatchGet 方法
+// 根据多个 SeqKey 从 HBase 中检索数据
+func (s *server) BatchGet(ctx context.Context, seqKeys []*pb.SeqKey) (*pb.SeqItems, error) {
+	// 创建一个批次操作的列表
+	var batch []*hrpc.Get
+
+	// 遍历每个 SeqKey
+	for _, seqKey := range seqKeys {
+		rowKey := generateRowKey(string(seqKey.BizId), seqKey.Seq) // 生成 RowKey
+		// 创建 HBase Get 请求
+		getRequest, err := hrpc.NewGetStr(ctx, "my_table", rowKey)
+		if err != nil {
+			log.Printf("Get request creation failed: %v", err)
+			return nil, err // 返回错误
+		}
+		// 将每个 getRequest 加入到批次列表中
+		batch = append(batch, getRequest)
+	}
+
+	// 创建一个用于存储结果的切片
+	var seqItems []*pb.SeqItem
+
+	// 执行批次操作
+	for _, getRequest := range batch {
+		getRsp, err := s.client.Get(getRequest)
+		if err != nil {
+			log.Printf("Get request execution failed: %v", err)
+			return nil, err // 返回错误
+		}
+		if len(getRsp.Cells) == 0 {
+			log.Printf("No data found for row key: %s", getRequest.Key())
+			continue
+		}
+		value := getRsp.Cells[0].Value // 获取返回值
+
+		seqItem := &pb.SeqItem{}
+		// 反序列化为 seqItem
+		err = proto.Unmarshal(value, seqItem)
+		if err != nil {
+			log.Printf("Failed to unmarshal SeqItem: %v", err)
+			return nil, err // 返回错误
+		}
+		seqItems = append(seqItems, seqItem)
+	}
+
+	log.Println("BatchGet request successful")
+	return &pb.SeqItems{Items: seqItems}, nil // 返回 SeqItems
 }
 
 // 实现 gRPC 服务的 GetMaxKey 方法
@@ -168,8 +265,10 @@ func (s *server) GetMaxKey(ctx context.Context, seqKey *pb.SeqKey) (*pb.SeqKey, 
 func generateQueryRangeKeys(req *pb.RangeReq) (startRowKey string, endRowKey string) {
 	// 由于NewScanRangeStr方法默认为左闭右开，左开和右闭的时候需要处理
 	// 左开：withoutboth withoustart 右闭：withoutstart withboth
-	// 顺序
-	if req.Reverse == false {
+
+	// 顺序时startRowKey<endRowKey, 倒序时startRowKey>endRowKey
+
+	if req.Reverse == false { // 顺序
 		if req.Option == pb.RangeOption_WithoutStart || req.Option == pb.RangeOption_WithoutBoth {
 			// 左开区间，startRowkey+1
 			startRowKey = generateRowKey(string(req.Start.BizId), req.Start.Seq-1)
@@ -203,6 +302,18 @@ func generateQueryRangeKeys(req *pb.RangeReq) (startRowKey string, endRowKey str
 		}
 	}
 
+	// TODO
+	// startKey := []byte("startKey")
+	// endKey := []byte("endKey")
+
+	// startKeyWithZero := append(startKey, "\\0")
+	// endKeyWithZero := append(endKey, "\\0")
+
+	// if req.Option == pb.RangeOption_WithoutBoth{
+	// 	startRowKey = startKeyWithZero;
+	// 	endRowKey = endKey;
+	// }
+
 	return startRowKey, endRowKey
 }
 
@@ -211,6 +322,7 @@ func generateQueryRangeKeys(req *pb.RangeReq) (startRowKey string, endRowKey str
 func (s *server) QueryRange(ctx context.Context, req *pb.RangeReq) (*pb.SeqItems, error) {
 	// 根据RangeOption生成边界rowkey
 	startRowKey, endRowKey := generateQueryRangeKeys(req)
+
 	log.Printf("QueryRange startRowKey: %s, endRowKey: %s", startRowKey, endRowKey)
 
 	// 创建扫描请求
@@ -218,7 +330,7 @@ func (s *server) QueryRange(ctx context.Context, req *pb.RangeReq) (*pb.SeqItems
 	var err error
 
 	if req.Reverse {
-		scanRequest, err = hrpc.NewScanRangeStr(ctx, "my_table", startRowKey, endRowKey, hrpc.Reversed())
+		scanRequest, err = hrpc.NewScanRangeStr(ctx, "my_table", startRowKey, endRowKey, hrpc.Reversed(), hrpc.NumberOfRows(10))
 	} else {
 		scanRequest, err = hrpc.NewScanRangeStr(ctx, "my_table", startRowKey, endRowKey)
 	}
@@ -318,7 +430,7 @@ func (s *server) DeleteRange(ctx context.Context, req *pb.RangeReq) (*pb.DelRang
 
 // 主函数，启动 gRPC 服务器
 func main() {
-	lis, err := net.Listen("tcp", ":50052") // 创建一个 TCP 监听器，监听端口 50052
+	lis, err := net.Listen("tcp", ":30020") // 创建一个 TCP 监听器，监听端口30020
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err) // 监听失败，记录错误日志并退出
 	}
@@ -326,7 +438,7 @@ func main() {
 	s := grpc.NewServer()                  // 创建一个新的 gRPC 服务器实例
 	pb.RegisterSeqDbServer(s, NewServer()) // 注册 SeqDb 服务到 gRPC 服务器
 
-	fmt.Println("Server is running at :50052") // 打印服务器启动信息
+	fmt.Println("Server is running at :30020") // 打印服务器启动信息
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err) // 服务器启动失败，记录错误日志并退出
 	}

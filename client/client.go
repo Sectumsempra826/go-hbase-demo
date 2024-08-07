@@ -14,7 +14,7 @@ import (
 
 func main() {
 	// 连接到 gRPC 服务器
-	conn, err := grpc.NewClient("localhost:50052", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient("ld-7xv325q01b2720rk9-proxy-lindorm-pub.lindorm.rds.aliyuncs.com:30020", grpc.WithTransportCredentials(insecure.NewCredentials()))
 
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
@@ -77,6 +77,30 @@ func main() {
 		log.Fatalf("Get failed: %v", err)
 	}
 	fmt.Printf("Get request successful: %v\n", getResp)
+
+	// 测试BatchGet方法
+	//  batchGetReq := []*pb.SeqKey{
+	//     {
+	//         BizId: []byte("biz1"),
+	//         Seq:   1,
+	//     },
+	//     {
+	//         BizId: []byte("biz2"),
+	//         Seq:   2,
+	//     },
+	//     // 添加更多的测试数据...
+	// }
+
+	// // 调用 BatchGet 方法
+	// batchGetResp, err := client.BatchGet(context.Background(), batchGetReq)
+	// if err != nil {
+	//     log.Fatalf("BatchGet failed: %v", err)
+	// }
+
+	// // 打印结果
+	// fmt.Printf("BatchGet request successful:\n")
+	// for _, item := range batchGetResp.Items {
+	//     fmt.Printf("Retrieved item: %v\n", item)
 
 	// 测试 GetMaxKey 方法
 	getMaxKeyReq := &pb.SeqKey{
