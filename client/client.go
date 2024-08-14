@@ -2,19 +2,38 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+
+	// "crypto/tls"
+	// "crypto/x509"
 	"fmt"
 	"log"
+
+	// "os"
 	"time"
 
 	pb "go-hbase-demo/cloudpb"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	// "google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials"
+	//"google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
 	// 连接到 gRPC 服务器
-	conn, err := grpc.NewClient("ld-7xv325q01b2720rk9-proxy-lindorm-pub.lindorm.rds.aliyuncs.com:30020", grpc.WithTransportCredentials(insecure.NewCredentials()))
+
+	// proxyCA := "/var/tmp/fullchain.pem" // CA cert that signed the proxy
+	// f, err := os.ReadFile(proxyCA)
+
+	// p := x509.NewCertPool()
+	// p.AppendCertsFromPEM(f)
+	// tlsConfig := &tls.Config{
+	// 	RootCAs: p,
+	// }
+	conn, err := grpc.Dial("ld-7xv325q01b2720rk9-proxy-lindorm-pub.lindorm.rds.aliyuncs.com:9190", grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{InsecureSkipVerify: true})))
+
+	// conn, err := grpc.NewClient("ld-7xv325q01b2720rk9-proxy-lindorm-pub.lindorm.rds.aliyuncs.com:9190", grpc.WithTransportCredentials(insecure.NewCredentials()))
 
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)

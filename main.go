@@ -39,7 +39,7 @@ type server struct {
 
 // 创建新的 gRPC 服务器实例，并连接到 HBase
 func NewServer() *server {
-	client := gohbase.NewClient("ld-7xv325q01b2720rk9-proxy-lindorm-pub.lindorm.rds.aliyuncs.com:30020")
+	client := gohbase.NewClient("ld-7xv325q01b2720rk9-proxy-lindorm-pub.lindorm.rds.aliyuncs.com:9190")
 	return &server{client: client}
 }
 
@@ -430,7 +430,7 @@ func (s *server) DeleteRange(ctx context.Context, req *pb.RangeReq) (*pb.DelRang
 
 // 主函数，启动 gRPC 服务器
 func main() {
-	lis, err := net.Listen("tcp", ":30020") // 创建一个 TCP 监听器，监听端口30020
+	lis, err := net.Listen("tcp", ":30060") // 创建一个 TCP 监听器，监听端口30020
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err) // 监听失败，记录错误日志并退出
 	}
@@ -438,7 +438,7 @@ func main() {
 	s := grpc.NewServer()                  // 创建一个新的 gRPC 服务器实例
 	pb.RegisterSeqDbServer(s, NewServer()) // 注册 SeqDb 服务到 gRPC 服务器
 
-	fmt.Println("Server is running at :30020") // 打印服务器启动信息
+	fmt.Println("Server is running at :30060") // 打印服务器启动信息
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err) // 服务器启动失败，记录错误日志并退出
 	}
